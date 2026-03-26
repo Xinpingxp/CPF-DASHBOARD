@@ -1,12 +1,5 @@
 import { useState } from 'react'
 
-// Hardcoded accounts — no backend needed for 3 users
-const ACCOUNTS = [
-  { username: 'cso',        password: '1234', id: 'a', name: 'CSO',        role: 'CSO' },
-  { username: 'tl',         password: '1234', id: 'b', name: 'TL',         role: 'TL' },
-  { username: 'supervisor', password: '1234', id: 'c', name: 'Supervisor', role: 'Supervisor' },
-]
-
 export function getStoredSession() {
   try { return JSON.parse(localStorage.getItem('cpf_session')) } catch { return null }
 }
@@ -23,14 +16,27 @@ export default function Login({ onLogin }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
-    const match = ACCOUNTS.find(a => a.username === username.trim() && a.password === password)
-    if (!match) { setError('Invalid username or password.'); return }
-    const { username: _, password: __, ...officer } = match
-    storeSession(officer)
-    onLogin(officer)
+    setLoading(true)
+    setError('')
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username.trim(), password }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Login failed.'); return }
+      storeSession(data)
+      onLogin(data)
+    } catch {
+      setError('Cannot reach server. Is it running?')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -101,12 +107,13 @@ export default function Login({ onLogin }) {
             </div>
           )}
 
-          <button type="submit" style={{
-            marginTop: 4, padding: '10px', borderRadius: 8, border: 'none', cursor: 'pointer',
+          <button type="submit" disabled={loading} style={{
+            marginTop: 4, padding: '10px', borderRadius: 8, border: 'none',
+            cursor: loading ? 'not-allowed' : 'pointer',
             background: 'linear-gradient(135deg, #1a6b55, #0a4a3a)',
-            color: '#fff', fontSize: 14, fontWeight: 700,
+            color: '#fff', fontSize: 14, fontWeight: 700, opacity: loading ? 0.7 : 1,
           }}>
-            Sign in
+            {loading ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
       </div>
