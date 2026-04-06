@@ -2,174 +2,310 @@
 
 ## What This Is
 
-CPF Mirror is a browser-only performance dashboard for CPF officers. It takes two inputs — an Auditmate Excel audit report and ESS (Email Satisfaction Survey) member feedback — and uses an AI model to generate a competency gap analysis with development recommendations. No backend. No database. Everything runs in the browser.
+CPF Mirror is a full-stack performance dashboard for CPF officers. It ingests Auditmate audit records, ESS (Email Satisfaction Survey) feedback, and OR (Officer Response) interaction logs from Excel uploads, stores them in MongoDB, and uses GPT-4o (via OpenRouter) to generate competency analysis, development summaries, and supporting evidence. A TL or Supervisor can view any officer's data and override competency levels.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | React 19 + Vite, Recharts for charts |
+| Backend | Express 5 (Node.js, ES Modules) |
+| Database | MongoDB via Mongoose |
+| AI | GPT-4o via OpenRouter API |
+| Auth | JWT (8h expiry), bcrypt password hashing |
+| Excel parsing | SheetJS (xlsx) |
 
 ---
 
 ## How to Run
 
-1. Copy `.env.example` to `.env`
-2. Fill in your API key and provider:
-   ```
-   VITE_API_KEY=your-key-here
-   VITE_API_PROVIDER=openrouter
-   ```
-3. Run:
-   ```
-   npm install
-   npm run dev
-   ```
-4. Open `http://localhost:5173`
+```bash
+cp .env.example .env
+# Fill in MONGODB_URI and OPENROUTER_API_KEY
+npm install
+npm run dev          # starts Vite (port 5173) + Express (port 3001) concurrently
+```
+
+Seed scripts (run once):
+```bash
+npm run seed:competencies   # load competency framework into MongoDB
+npm run seed:mockdata       # seed main CSO with Jan–Mar 2026 data
+npm run seed:twoCSOs        # create cso.bad + cso.good with different performance trajectories
+```
 
 ---
 
 ## Login Accounts
 
-Accounts are hardcoded in `src/components/Login.jsx`.
+Stored in MongoDB (users collection). All passwords are bcrypt-hashed.
 
-| Username | Password | Role |
-|---|---|---|
-| `cso` | `1234` | CSO |
-| `tl` | `1234` | Team Leader |
-| `supervisor` | `1234` | Supervisor |
+| Username | Password | Role | Data |
+|---|---|---|---|
+| `cso` | `1234` | CSO | Jan–Mar 2026 (Advanced trajectory) |
+| `cso.bad` | `1234` | CSO | Jan–Mar 2026 (Bad→Mid trajectory) |
+| `cso.good` | `1234` | CSO | Jan–Mar 2026 (Mid→Good trajectory) |
+| `tl` | `1234` | TL | No personal data — views CSO officers |
+| `supervisor` | `1234` | Supervisor | No personal data — views all + can override |
 
-Session is stored in `localStorage` so it persists on page refresh. Logout clears it.
+Auth flow: login → JWT stored in `localStorage` → sent as `Authorization: Bearer <token>` on every API call → `requireAuth` middleware validates it on every route.
 
 ---
 
 ## File Structure
 
 ```
-src/
-├── App.jsx                     # Root — routes to role-specific shell
-├── main.jsx                    # Vite entry point
-├── index.css                   # Global reset + scrollbar styles
-│
-├── components/
-│   ├── Dashboard.jsx           # Core analysis component (CSO view)
-│   ├── Sidebar.jsx             # Left nav + officer switcher
-│   ├── Topbar.jsx              # Header with rank dropdown + logout
-│   ├── Login.jsx               # Login screen + session helpers
-│   ├── TLShell.jsx             # TL wrapper: My Analysis + Team Overview tabs
-│   ├── SupervisorShell.jsx     # Supervisor wrapper: same tabs + override/inject powers
-│   └── TeamOverview.jsx        # Team results grid (used by TL and Supervisor)
-│
+server/
+├── index.js                    # Express app entry — mounts all routes
+├── middleware/
+│   └── auth.js                 # requireAuth JWT middleware
+├── models/
+│   ├── User.js                 # username, password (hash), name, role
+│   ├── AuditRecord.js          # raw Auditmate row + officerId + uploadDate
+│   ├── EssRecord.js            # raw ESS row + officerId + uploadDate
+│   ├── Interaction.js          # raw OR row + officerId + uploadDate
+│   ├── ParsedUpload.js         # human-readable sentence array per upload/date/type
+│   ├── AiCache.js              # cached AI responses (keyed by officerId+date+competencyIndex+type)
+│   └── CompetencyOverride.js   # TL/Supervisor manual level overrides
+├── routes/
+│   ├── auth.js                 # POST /api/auth/login
+│   ├── upload.js               # POST /api/upload
+│   ├── dashboard.js            # GET  /api/dashboard
+│   ├── flagsAlerts.js          # GET  /api/flags-alerts
+│   ├── competencyBreakdown.js  # GET  /api/competency-breakdown
+│   ├── radarData.js            # GET  /api/radar
+│   ├── aiInsights.js           # POST /api/ai/development, /evidence, /correspondence-*
+│   ├── competencies.js         # GET  /api/competencies
+│   ├── teamOverview.js         # GET  /api/team-overview, /officer/:id, POST /override
+│   └── users.js                # GET  /api/users/me
 └── utils/
-    └── storage.js              # localStorage read/write helpers
+    ├── parsers.js              # parseInteractionRow / parseAuditRow / parseEssRow
+    ├── fetchParsedContext.js   # fetches ParsedUpload sentences for AI context
+    └── getCompetencyContext.js # buildCompetencySystemPrompt(role)
+
+src/
+├── App.jsx                     # Auth context + React Router routes
+├── components/
+│   ├── Login.jsx               # Login form → POST /api/auth/login
+│   ├── Layout.jsx              # Shell: Sidebar + <Outlet />
+│   ├── Sidebar.jsx             # Left nav + officer switcher (TL/Supervisor)
+│   └── Topbar.jsx              # Page header
+├── pages/
+│   ├── DataUpload.jsx          # Upload Auditmate/ESS/OR files
+│   ├── DashboardPage.jsx       # Overview: scores, trend chart, indicators
+│   ├── ForecastPage.jsx        # 3-month Monte Carlo simulation
+│   ├── CompetencyBreakdown.jsx # Per-competency level + AI dev summaries
+│   ├── CompetencyRadar.jsx     # Radar chart: 6 indicators current vs predicted
+│   ├── FlagsAlerts.jsx         # Red/amber/green performance alerts
+│   └── TeamOverview.jsx        # TL/Supervisor: team list + officer drill-down
+└── utils/
+    └── auth.js                 # saveAuth / getToken / getUser / clearAuth (localStorage)
+
+scripts/
+├── seedCompetencies.js         # Seeds CompetencyFramework collection from JSON
+├── seedMockData.js             # Seeds main CSO with Jan–Mar 2026 XLSX data
+└── seedTwoCSOs.js              # Creates cso.bad + cso.good with separate XLSX datasets
 ```
 
 ---
 
-## How the Analysis Works
+## Page-by-Page: What It Shows & How It Gets the Data
 
-### Step 1 — Input
-The user provides two sources:
-- **Auditmate Excel file** — uploaded and parsed locally in the browser using SheetJS. The app reads 10 indicator columns (pass/fail, score, explanation, suggestions) plus total score and auditor comments.
-- **ESS surveys** — up to 4 star ratings (1–5) with verbatim member feedback. A new survey row appears once the previous one has both a rating and verbatim filled in.
+### 1. Data Upload (`/data-upload`)
 
-### Step 2 — Prompt building
-The app formats the parsed Excel data and ESS responses into a structured text prompt. This prompt is combined with a system prompt that defines the competency framework for the officer's rank.
+**What it shows:**
+- Drop zones for Auditmate (CSV/XLSX), ESS (CSV/XLSX), and OR interactions (CSV/XLSX)
+- One upload slot per day — each day's data is stored separately with its `uploadDate`
+- After upload, shows a summary card: total score, ESS avg, record count for that day
+- The summary card is persisted in the database so returning to this tab re-fetches it
 
-### Step 3 — AI call
-The prompt is sent directly from the browser to the AI API (OpenRouter by default). The AI returns a JSON response — no server in between.
-
-### Step 4 — Results display
-The app parses the JSON and renders:
-- **4 metric cards** — Overall Level, Auditmate Score, Member Satisfaction, Competencies at Basic
-- **Competency gap cards** — one per competency, showing: why this level was assigned, commendable points, gaps observed, and numbered steps to reach the next level
-- **Auditmate Indicators panel** — 10 pass/fail indicators with reasons
-- **ESS Signals panel** — behavioural signals extracted from member feedback
+**How it works:**
+- File is parsed in the browser (CSV via custom parser, XLSX via SheetJS)
+- Rows are `POST`ed to `/api/upload` as JSON
+- Backend saves rows to `AuditRecord`, `EssRecord`, or `Interaction` collections
+- Backend also runs `parseAuditRow` / `parseEssRow` / `parseInteractionRow` and saves human-readable sentences to `ParsedUpload` — these feed AI context later
+- `uploadDate` is always today's date in `YYYY-MM-DD` format
 
 ---
 
-## Competency Framework
+### 2. Dashboard (`/dashboard`)
 
-The competency names are hardcoded in `Dashboard.jsx` (`CORE_COMPETENCIES`, `CORRESPONDENCE_CLUSTERS`, `TL_COMPETENCIES`, `SUPERVISOR_COMPETENCIES`). They are based on CPF's actual competency framework, not derived from the Excel file.
+**What it shows:**
+- 4 stat cards: Competency Score, ESS Avg, Records This Period, Level Distribution (Basic/Intermediate/Advanced indicator counts)
+- 30-day trend area chart (daily average scores)
+- 10 Auditmate indicator pass rates with level badges (Advanced ≥90%, Intermediate ≥70%, Basic <70%)
 
-| Competency Group | Who Gets Evaluated |
-|---|---|
-| 6 Core Competencies | All ranks |
-| 4 Correspondence Clusters | All ranks |
-| 4 TL Competencies | TL and Supervisor |
-| 1 Supervisor Competency | Supervisor only |
-
-**Unquantifiable competencies** — two competencies cannot be assessed from correspondence data alone and are excluded from the AI prompt:
-- Workload Delegation (TL+)
-- Strategic Oversight & Team Performance Management (Supervisor)
-
-These appear as blank "Pending" cards until a Supervisor manually sets a score.
-
----
-
-## Role Permissions
-
-### CSO
-- Upload Auditmate Excel + fill ESS surveys
-- Run analysis → see own competency gap cards
-- Results saved to localStorage automatically
-
-### Team Leader
-- Same analysis flow as CSO (for their own case)
-- Additional **Team Overview** tab — read-only view of CSO results (competency levels, Auditmate score)
-- Cannot edit or override any scores
-
-### Supervisor
-- Same analysis flow as TL
-- **Team Overview** with two extra powers:
-  - **Override** — click any LLM-generated competency score to set a new level. Requires a written justification. Saved with timestamp. Displayed as "Manual Override" alongside the original LLM score.
-  - **Set Score** — fill in blank pending competencies (Workload Delegation, Strategic Oversight) for any officer. Requires a written justification. Displayed as "Supervisor Assessment".
+**How it gets data:**
+- `GET /api/dashboard?officerId=<id>`
+- Fetches **all** AuditRecords + ESS records from last 30 days from MongoDB
+- Groups by `uploadDate`, computes daily averages
+- For each of the 10 indicators, finds matching column by keyword (e.g. "courtesy", "comprehend") and averages pass/fail values across all records
+- `competencyScore` = average of all total score fields in the 30-day window
+- ESS average = mean of all ESS ratings (1–5 scale) in the 30-day window
+- All tabs (Dashboard, Forecast, Radar, Flags, Competency Breakdown) use **the same rolling 30-day window**
 
 ---
 
-## Data Storage
+### 3. 3-Month Forecast (`/forecast`)
 
-All data is stored in the browser's `localStorage`. Nothing is sent to a server.
+**What it shows:**
+- Predicted mean score at day 90
+- Pass probability (% of simulations reaching ≥80%)
+- Trajectory chart: mean line + 95% CI band + IQR band
+- 4 adjustable sliders: interactions/day, complexity rate, learning rate, fatigue rate
 
-| Key | What it stores |
-|---|---|
-| `cpf_session` | Currently logged-in officer |
-| `cpf_results` | Analysis results per officer ID |
-| `cpf_overrides` | Supervisor overrides per officer + competency |
-| `cpf_injections` | Supervisor-injected scores per officer + competency |
-
-Data is lost if the browser's localStorage is cleared. Data is not shared across devices or browsers.
-
----
-
-## API Configuration
-
-The AI call is made directly from the browser. Supported providers:
-
-| Provider | VITE_API_PROVIDER value | Notes |
-|---|---|---|
-| OpenRouter | `openrouter` | Default. Routes to Claude claude-opus-4-6. |
-| Anthropic | `anthropic` | Requires `anthropic-dangerous-direct-browser-access: true` header |
-| OpenAI | `openai` | Uses gpt-4o by default |
-
-To override the model, add `VITE_API_MODEL=model-name` to your `.env`.
-
-**Note:** The API key is visible in the browser's built JS bundle. This is acceptable for a local prototype but should not be deployed publicly.
+**How it works:**
+- Fetches `GET /api/dashboard` to get the officer's real current competency score as the simulation baseline
+- Runs a **Monte Carlo simulation entirely in the browser** (200 iterations × 90 days)
+- Each day: `score[d] = score[d-1] + gain - fatigue + noise`
+  - `noise` = random ±4%
+  - `gain` = `learningRate × (complexityRate/100) × (interactionsPerDay/25) × 100`
+  - `fatigue` = `fatigueRate × random × 100`
+- Statistics (mean, 95th/5th percentile, IQR) computed across all 200 runs per day
+- Chart samples every 3 days (~31 points) for performance
+- No backend call for the simulation — purely client-side computation
 
 ---
 
-## Changing the Competency Framework
+### 4. Competency Breakdown (`/competency-breakdown`)
 
-To add, remove, or rename competencies, edit the constants near the top of `src/components/Dashboard.jsx`:
+**What it shows:**
+Four tabs:
+- **Correspondence Competencies** — 5 competencies mapped to Auditmate indicators, with live scores
+- **Core Competencies** — 6 CPF core competencies with per-competency levels
+- **Functional Competencies** — loaded from framework, shown as definition cards
+- **Leadership Competencies** — Supervisor only
 
-- `CORE_COMPETENCIES` — the 6 core competencies (all ranks)
-- `CORRESPONDENCE_CLUSTERS` — the 4 correspondence clusters (all ranks)
-- `TL_COMPETENCIES` — additional competencies for TL and above
-- `SUPERVISOR_COMPETENCIES` — additional competency for Supervisor
-- `UNQUANTIFIABLE` — competencies the LLM should skip (supervisor injects manually)
-- `RANK_EVAL_INSTRUCTION` — the instruction sent to the LLM telling it what to evaluate per rank
+Each card (collapsed): competency name, level label, 3 level boxes (Basic/Intermediate/Advanced highlighted), status badge (Mastery/Advancing/Stagnant)
+
+Each card (expanded):
+- Core: score context bar, AI Development Summary (wellDone/toProgress bullets), Supporting Evidence button
+- Correspondence: Contributing Indicators table (per-indicator pass rate), ESS signal (for Empathetic Writing + Customer Obsessed), AI Development Summary, Supporting Evidence button
+
+**How it gets data:**
+- `GET /api/competency-breakdown?officerId=<id>` — computes everything from last 30 days of AuditRecords + ESS
+- Per-competency level = indicator pass rate averaged → `<60%=Basic, 60–79%=Intermediate, ≥80%=Advanced`
+- Status per competency = `Mastery` if level 3, `Advancing` if upward slope over last 3 upload dates, else `Stagnant`
+- Correspondence competencies each map to specific indicator keywords:
+  - Empathetic Writing → courtesy + meaningful/conversation
+  - Direct Reply → clear + complete + comply/sog
+  - Active Listening → comprehend + complete
+  - Customer Obsessed → courtesy + meaningful/conversation + correct
+  - Problem Solving → comprehend + correct + complete + cultivate/digital
+- `GET /api/competencies?role=<role>` — loads the framework (names, descriptions, bullet points) from MongoDB
+
+**AI calls (on card expand):**
+- Core: `POST /api/ai/development` → returns `{ wellDone, toProgress }` or `{ mastery }` bullets
+- Core: `POST /api/ai/evidence` → returns `{ strengths, gaps, suggestions }` with quotes
+- Correspondence: `POST /api/ai/correspondence-development` → same structure
+- Correspondence: `POST /api/ai/correspondence-evidence` → same structure
+- All AI responses are **cached in MongoDB** (`AiCache` collection) keyed by `officerId + uploadDate + competencyIndex + type` — so the same card won't call GPT-4o twice
 
 ---
 
-## Changing Login Accounts
+### 5. Competency Radar (`/competency-radar`)
 
-Edit the `ACCOUNTS` array in `src/components/Login.jsx`. Each account needs:
-```js
-{ username: 'string', password: 'string', id: 'unique-letter', name: 'Display Name', role: 'CSO'|'TL'|'Supervisor' }
+**What it shows:**
+- Radar chart with 6 axes (one per Auditmate indicator group: Courtesy, Comprehend, Correct, Complete, Clear, Meaningful)
+- Two overlapping polygons: Current (30-day avg) vs 3-Month Predicted
+- Below the chart: indicator detail table with week-on-week and month-on-month % change, trend arrow
+- AI insight sentence per indicator (one line describing what the trend means)
+
+**How it gets data:**
+- `GET /api/radar?officerId=<id>`
+- Current = average pass rate per indicator over last 30 days
+- Predicted = extrapolated 90 days forward using a trend projection:
+  - Calculates daily rate of change from full history (first to last upload date)
+  - Improvements dampened by 0.75× to avoid over-optimism
+  - Flat indicators get a minimum drift of 0.025%/day (~2% over 90 days)
+  - Hard ceiling of 88% — never predicts 100%
+- Week/month change = diff between this week's avg and last week's avg (same for month)
+- AI insights: one sentence per indicator generated by GPT-4o, cached by ISO week key
+
+---
+
+### 6. Flags & Alerts (`/flags-alerts`)
+
+**What it shows:**
+- 3 stat cards: count of Critical (red), Development (amber), Positive (green) flags
+- Each flag as a coloured card with title + explanation message
+
+**How it gets data:**
+- `GET /api/flags-alerts?officerId=<id>`
+- Looks at the **last 3 upload dates** of AuditRecords to check for trends
+- Rule-based logic — no AI involved. Example rules:
+  - **Critical (red)**: 3+ competencies with no level progression across last 3 uploads; consecutive declining total scores; ESS avg <3.0; critical indicator (Courtesy/Correct) failing >50% of the time
+  - **Development (amber)**: score plateau (flat across last 3 uploads); ESS declining; high fail rate on any single indicator
+  - **Positive (green)**: consistent score improvement; all indicators passing; ESS avg ≥4.5
+
+---
+
+### 7. Team Overview (`/team-overview`) — TL and Supervisor only
+
+**What it shows:**
+- **TL view**: list of CSO officers on the team — each card shows name, overall score, level badge, alert count. Click an officer to open a drill-down panel.
+- **Supervisor view**: same list but includes TLs and all CSOs
+- **Drill-down panel** (any officer): competency-by-competency level bars, overall score, active alerts. Supervisor can enter Override Mode to manually set any competency level.
+
+**How it gets data:**
+- `GET /api/team-overview` — returns list of officers the logged-in user can see
+- `GET /api/team-overview/officer/:id` — returns one officer's competency levels, score, and alerts (pulls from same `/api/flags-alerts` and `/api/competency-breakdown` logic server-side)
+- **Override**: `POST /api/team-overview/override` — saves a `CompetencyOverride` document. Overridden levels are shown with a pencil icon in the drill-down.
+
+---
+
+## Data Flow Summary
+
+```
+Excel upload → /api/upload
+  → AuditRecord / EssRecord / Interaction (raw rows in MongoDB)
+  → ParsedUpload (human-readable sentences for AI context)
+
+/api/dashboard          → AuditRecord + EssRecord (30-day window)
+/api/flags-alerts       → AuditRecord + EssRecord (last 3 upload dates)
+/api/competency-breakdown → AuditRecord + EssRecord (30-day window) + CompetencyFramework
+/api/radar              → AuditRecord (all history for trend, 30-day for current)
+/api/ai/*               → ParsedUpload (context) → OpenRouter GPT-4o → AiCache
+/api/team-overview      → User + CompetencyOverride + above routes
 ```
 
-Also update the `OFFICERS` array in `src/App.jsx` to match.
+---
+
+## Level & Status Thresholds
+
+| Score | Level |
+|---|---|
+| ≥80% | Advanced (3) |
+| 60–79% | Intermediate (2) |
+| <60% | Basic (1) |
+
+| Status | Condition |
+|---|---|
+| Mastery | Level 3 AND score ≥80% consistently |
+| Advancing | Last 3 upload dates show upward slope |
+| Stagnant | Everything else |
+
+---
+
+## AI Caching
+
+All GPT-4o responses are cached in the `AiCache` collection. Cache key:
+```
+{ officerId, uploadDate, competencyIndex, type }
+```
+- Core development: `type = 'development'`, index 0–5
+- Core evidence: `type = 'evidence'`, index 0–5
+- Correspondence development: `type = 'corr-dev'`, index 100–104
+- Correspondence evidence: `type = 'corr-ev'`, index 100–104
+- Radar insights: `type = 'radar-insights'`, index 99, keyed by ISO week
+
+Timeout on all AI fetch calls: **30 seconds** (`AbortSignal.timeout(30_000)`). On timeout or error, the UI shows nothing rather than crashing.
+
+---
+
+## Adding a New Officer
+
+1. Create user in MongoDB (or add to `seedTwoCSOs.js`)
+2. Upload XLSX data via the Data Upload page, or run a seed script
+3. The officer appears automatically in Team Overview for TL/Supervisor
