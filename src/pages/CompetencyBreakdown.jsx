@@ -423,71 +423,6 @@ function CompetencyCard({ index, comp, level, status, compData, viewingAsId, rol
   )
 }
 
-/* ── Definition card (correspondence / functional / leadership) ── */
-function DefinitionCard({ comp, isMeasurable }) {
-  const [open, setOpen] = useState(false)
-
-  return (
-    <div style={{
-      borderRadius: '12px', overflow: 'hidden',
-      border: '1px solid #e5e7eb', background: 'white',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-    }}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        style={{
-          width: '100%', display: 'flex', alignItems: 'center', gap: '12px',
-          padding: '14px 18px', background: 'transparent', border: 'none',
-          cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
-        }}
-      >
-        <span style={{ color: '#9ca3af', flexShrink: 0 }}>
-          {open ? <ChevDown /> : <ChevRight />}
-        </span>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: '13px', fontWeight: '700', color: '#111827' }}>{comp.name}</div>
-          {comp.short_description && (
-            <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '2px', lineHeight: '1.4' }}>
-              {comp.short_description}
-            </div>
-          )}
-        </div>
-        <span style={{
-          fontSize: '11px', fontWeight: '600', padding: '3px 10px', borderRadius: '20px', flexShrink: 0,
-          background: isMeasurable ? '#f0fdf4' : '#f3f4f6',
-          color:      isMeasurable ? '#15803d' : '#6b7280',
-        }}>
-          {isMeasurable ? 'From correspondence' : 'Pending Assessment'}
-        </span>
-      </button>
-
-      {open && (
-        <div style={{ margin: '0 14px 14px', background: '#f9fafb', borderRadius: '8px', padding: '14px 18px' }}>
-          {!isMeasurable && (
-            <div style={{
-              background: '#f3f4f6', borderRadius: '8px', padding: '10px 14px',
-              fontSize: '12px', color: '#6b7280', marginBottom: comp.bullet_points?.length ? '12px' : 0,
-            }}>
-              This competency is assessed separately and cannot be measured from correspondence data.
-            </div>
-          )}
-          {comp.bullet_points?.length > 0 && (
-            <div>
-              <div style={{ fontSize: '11px', fontWeight: '700', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px' }}>
-                Behavioural Indicators
-              </div>
-              <ul style={{ margin: 0, padding: '0 0 0 16px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                {comp.bullet_points.map((b, i) => (
-                  <li key={i} style={{ fontSize: '12px', color: '#374151', lineHeight: '1.55' }}>{b}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
 
 /* ── 3-source evidence panel (Functional / Leadership) ──────────── */
 function TriSourceEvidencePanel({ data, loading, error }) {
@@ -567,7 +502,7 @@ function TriSourceEvidencePanel({ data, loading, error }) {
 
 /* ── Functional / Leadership competency card ─────────────────────── */
 function FunctionalCard({ comp, viewingAsId, isLeadership, role }) {
-  const { index, name, shortDescription, bulletPoints, score, level, status } = comp
+  const { index, name, bulletPoints, score, level, status, rationale } = comp
 
   const [open, setOpen]           = useState(false)
   const [aiDev, setAiDev]         = useState(null)
@@ -620,35 +555,121 @@ function FunctionalCard({ comp, viewingAsId, isLeadership, role }) {
   }
 
   const st  = statusConfig(status)
-  const bg  = level !== null ? LEVEL_BG[level]     : '#f9fafb'
-  const bdr = level !== null ? LEVEL_BORDER[level]  : '#e5e7eb'
+  const bg  = level !== null ? LEVEL_BG[level]    : '#f9fafb'
+  const bdr = level !== null ? LEVEL_BORDER[level] : '#e5e7eb'
 
   return (
-    <div style={{ borderRadius: '14px', overflow: 'hidden', border: `1px solid ${bdr}`, background: bg, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-      <button onClick={handleOpen} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '12px', padding: '16px 20px', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
-        <span style={{ color: '#6b7280', flexShrink: 0 }}>{open ? <ChevDown /> : <ChevRight />}</span>
+    <div style={{
+      borderRadius: '14px', overflow: 'hidden',
+      border: `1px solid ${bdr}`, background: bg,
+      boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+    }}>
+      {/* Header row — identical structure to CompetencyCard */}
+      <button
+        onClick={handleOpen}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: '12px',
+          padding: '16px 20px', background: 'transparent', border: 'none',
+          cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+        }}
+      >
+        <span style={{ color: '#6b7280', flexShrink: 0 }}>
+          {open ? <ChevDown /> : <ChevRight />}
+        </span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: '14px', fontWeight: '700', color: '#111827', lineHeight: '1.3' }}>{name}</div>
-          <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '2px' }}>
-            {score != null ? `${score}% (30-day avg)` : shortDescription || 'No data available'}
+          <div style={{ fontSize: '14px', fontWeight: '700', color: '#111827', lineHeight: '1.3' }}>
+            {name}
+          </div>
+          <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '2px', lineHeight: '1.4' }}>
+            {score != null
+              ? `${score}% AI score (3 sources)`
+              : <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#9ca3af', fontStyle: 'italic' }}>
+                  <SpinnerIcon /> Generating AI score…
+                </span>
+            }
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
           <LevelBoxes absoluteLevel={scoreToAbsoluteLevel(score, role)} role={role} />
-          <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: '600', color: st.color, background: st.bg, padding: '3px 9px', borderRadius: '20px' }}>
-            {st.icon}{st.label}
+          <span style={{
+            display: 'flex', alignItems: 'center', gap: '4px',
+            fontSize: '11px', fontWeight: '600',
+            color: st.color, background: st.bg,
+            padding: '4px 10px', borderRadius: '20px',
+          }}>
+            {st.icon} {st.label}
           </span>
         </div>
       </button>
 
+      {/* Expanded content */}
       {open && (
-        <div style={{ margin: '0 16px 16px', background: 'white', borderRadius: '10px', padding: '20px 24px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-          <div style={{ fontSize: '13px', fontWeight: '700', color: '#111827', marginBottom: '12px' }}>Development Summary</div>
+        <div style={{
+          margin: '0 16px 16px',
+          background: 'white', borderRadius: '10px',
+          padding: '20px 24px',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+        }}>
+          {/* Score context bar */}
+          {score != null && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '16px',
+              background: '#f9fafb', borderRadius: '8px', padding: '10px 14px',
+              marginBottom: '20px',
+            }}>
+              <div style={{ fontSize: '12px', color: '#6b7280' }}>AI Score (3 sources)</div>
+              <div style={{ fontSize: '20px', fontWeight: '800', color: level ? LEVEL_TEXT[level] : '#9ca3af' }}>
+                {score}%
+              </div>
+              <div style={{ marginLeft: 'auto' }}>
+                <span style={{
+                  fontSize: '11px', fontWeight: '600', padding: '3px 10px', borderRadius: '20px',
+                  background: st.bg, color: st.color,
+                }}>
+                  {st.label}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Score Rationale */}
+          {rationale && (
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ fontSize: '12px', fontWeight: '700', color: '#6b7280', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Score Rationale
+              </div>
+              <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '12px 16px', borderLeft: '3px solid #94a3b8' }}>
+                <p style={{ margin: 0, fontSize: '13px', color: '#475569', fontStyle: 'italic', lineHeight: '1.6' }}>
+                  {rationale}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Section 2: AI Development Summary */}
+          <div style={{ fontSize: '13px', fontWeight: '700', color: '#111827', marginBottom: '12px' }}>
+            Development Summary
+          </div>
           <DevelopmentPanel data={aiDev} loading={aiDevLoading} error={aiDevError} />
 
+          {/* Section 3: Supporting Evidence toggle */}
           <div style={{ marginTop: '20px', borderTop: '1px solid #f3f4f6', paddingTop: '16px' }}>
-            <button onClick={handleShowEvidence} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', border: '1px solid #d1d5db', background: showEvidence ? '#1e3a35' : 'white', color: showEvidence ? 'white' : '#374151', fontSize: '12px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <button
+              onClick={handleShowEvidence}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
+                padding: '8px 16px', borderRadius: '8px',
+                border: '1px solid #d1d5db',
+                background: showEvidence ? '#1e3a35' : 'white',
+                color:      showEvidence ? 'white'   : '#374151',
+                fontSize: '12px', fontWeight: '600',
+                cursor: 'pointer', fontFamily: 'inherit',
+                transition: 'all 0.15s',
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
               {showEvidence ? 'Hide' : 'Show'} Supporting Evidence
             </button>
             {showEvidence && (
@@ -964,24 +985,48 @@ export default function CompetencyBreakdown() {
       ))
     }
 
-    // Functional — use scored FunctionalCard if data available
+    // Functional — always render FunctionalCard; fall back to framework entries with null scores
     if (type === 'Functional') {
       const funcComps = compData?.functionalCompetencies
-      if (funcComps?.length) {
-        return funcComps.map(comp => (
-          <FunctionalCard key={comp.index} comp={comp} viewingAsId={officerId} isLeadership={false} role={officerRole} />
-        ))
-      }
+      const fwGroup   = framework.filter(c => c.competency_type === 'Functional')
+      const cards = funcComps?.length
+        ? funcComps
+        : fwGroup.map((comp, i) => ({
+            index: 200 + i, name: comp.name,
+            shortDescription: comp.short_description ?? '',
+            bulletPoints: comp.bullet_points ?? [],
+            score: null, level: null, status: 'Stagnant', rationale: null,
+          }))
+      if (!cards.length) return (
+        <div style={{ background: 'white', borderRadius: '12px', padding: '32px', textAlign: 'center', fontSize: '13px', color: '#9ca3af' }}>
+          No functional competencies found.
+        </div>
+      )
+      return cards.map(comp => (
+        <FunctionalCard key={comp.index} comp={comp} viewingAsId={officerId} isLeadership={false} role={officerRole} />
+      ))
     }
 
-    // Leadership — use scored FunctionalCard if data available
+    // Leadership — always render FunctionalCard; fall back to framework entries with null scores
     if (type === 'Leadership') {
       const leadComps = compData?.leadershipCompetencies
-      if (leadComps?.length) {
-        return leadComps.map(comp => (
-          <FunctionalCard key={comp.index} comp={comp} viewingAsId={officerId} isLeadership={true} role={officerRole} />
-        ))
-      }
+      const fwGroup   = framework.filter(c => c.competency_type === 'Leadership')
+      const cards = leadComps?.length
+        ? leadComps
+        : fwGroup.map((comp, i) => ({
+            index: 300 + i, name: comp.name,
+            shortDescription: comp.short_description ?? '',
+            bulletPoints: comp.bullet_points ?? [],
+            score: null, level: null, status: 'Stagnant', rationale: null,
+          }))
+      if (!cards.length) return (
+        <div style={{ background: 'white', borderRadius: '12px', padding: '32px', textAlign: 'center', fontSize: '13px', color: '#9ca3af' }}>
+          No leadership competencies found.
+        </div>
+      )
+      return cards.map(comp => (
+        <FunctionalCard key={comp.index} comp={comp} viewingAsId={officerId} isLeadership={true} role={officerRole} />
+      ))
     }
 
     const group = framework.filter(c => c.competency_type === type)
@@ -993,7 +1038,6 @@ export default function CompetencyBreakdown() {
 
     return group.map(comp => {
       const coreIdx = CORE_AI_INDEX[comp.name]
-      const isMeasurable = comp.assessment_method === 'correspondence_data'
 
       if (type === 'Core' && coreIdx !== undefined) {
         return (
@@ -1010,13 +1054,7 @@ export default function CompetencyBreakdown() {
         )
       }
 
-      return (
-        <DefinitionCard
-          key={comp.name}
-          comp={comp}
-          isMeasurable={isMeasurable}
-        />
-      )
+      return null
     })
   }
 
@@ -1075,9 +1113,10 @@ export default function CompetencyBreakdown() {
             {compData && (() => {
               const isCorr = activeTab === 'Correspondence'
               const isFunc = activeTab === 'Functional'
-              const displayLevel  = isCorr ? compData.correspondenceLevel  : isFunc ? compData.functionalLevel  : compData.currentLevel
-              const displayScore  = isCorr ? compData.correspondenceOverall : isFunc ? compData.functionalOverall : compData.currentScore
-              const displayStatus = isCorr ? compData.correspondenceStatus  : compData.status
+              const isLead = activeTab === 'Leadership'
+              const displayLevel  = isCorr ? compData.correspondenceLevel  : isFunc ? compData.functionalLevel  : isLead ? compData.leadershipLevel  : compData.currentLevel
+              const displayScore  = isCorr ? compData.correspondenceOverall : isFunc ? compData.functionalOverall : isLead ? compData.leadershipOverall : compData.currentScore
+              const displayStatus = isCorr ? compData.correspondenceStatus  : isFunc ? compData.functionalStatus : isLead ? compData.leadershipStatus  : compData.status
               const st = statusConfig(displayStatus ?? 'Stagnant')
               return (
                 <div style={{
@@ -1088,7 +1127,7 @@ export default function CompetencyBreakdown() {
                 }}>
                   <div>
                     <div style={{ fontSize: '11px', color: '#9ca3af', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      {isCorr ? 'Correspondence Level' : 'Current Level'}
+                      {isCorr ? 'Correspondence Level' : isLead ? 'Leadership Level' : isFunc ? 'Functional Level' : 'Current Level'}
                     </div>
                     <div style={{ fontSize: '26px', fontWeight: '800', color: displayLevel ? LEVEL_TEXT[displayLevel] : '#9ca3af' }}>
                       {scoreToAbsoluteLevel(displayScore, officerRole) != null ? `Level ${scoreToAbsoluteLevel(displayScore, officerRole)}` : '—'}
@@ -1097,7 +1136,7 @@ export default function CompetencyBreakdown() {
                   <div style={{ width: '1px', height: '40px', background: '#f3f4f6' }} />
                   <div>
                     <div style={{ fontSize: '11px', color: '#9ca3af', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      {isCorr ? 'Avg Score (5 comps)' : 'Latest Score'}
+                      {isCorr ? 'Avg Score (5 comps)' : (isFunc || isLead) ? 'AI Avg Score' : 'Latest Score'}
                     </div>
                     <div style={{ fontSize: '26px', fontWeight: '800', color: '#111827' }}>
                       {displayScore != null ? `${displayScore}%` : '—'}

@@ -8,7 +8,7 @@ const schema = new mongoose.Schema({
   officerId:       { type: String, required: true },
   uploadDate:      { type: String, required: true },  // YYYY-MM-DD of latest upload
   competencyIndex: { type: Number, required: true },  // 0-5
-  type:            { type: String, required: true, enum: ['development', 'evidence', 'corr-dev', 'corr-ev', 'func-dev', 'func-ev', 'lead-dev', 'lead-ev', 'scores'] },
+  type:            { type: String, required: true, enum: ['development', 'evidence', 'corr-dev', 'corr-ev', 'func-dev', 'func-ev', 'lead-dev', 'lead-ev', 'scores', 'func-score', 'lead-score'] },
   content:         { type: mongoose.Schema.Types.Mixed, required: true },
   createdAt:       { type: Date, default: Date.now, expires: 60 * 60 * 24 * 7 },
 });

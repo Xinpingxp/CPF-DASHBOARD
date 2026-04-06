@@ -4,6 +4,35 @@ import AuditRecord from '../models/AuditRecord.js';
 import EssRecord from '../models/EssRecord.js';
 import User from '../models/User.js';
 import CompetencyFramework from '../models/CompetencyFramework.js';
+import AiCache from '../models/AiCache.js';
+import { fetchParsedContext } from '../utils/fetchParsedContext.js';
+
+const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const AI_MODEL = 'openai/gpt-4o';
+
+async function callAI(systemPrompt, userPrompt) {
+  const res = await fetch(OPENROUTER_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: AI_MODEL,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      max_tokens: 500,
+    }),
+    signal: AbortSignal.timeout(35_000),
+  });
+  if (!res.ok) throw new Error(`OpenRouter ${res.status}`);
+  const data = await res.json();
+  return data.choices[0].message.content.trim();
+}
+
+const AI_SCORING_SYS_PROMPT = "You are a CPF performance evaluator. You will be given an officer's performance data from three sources and the definition of a specific competency. Score the officer's performance on that competency from 0 to 100 based on the evidence provided.";
 
 const router = Router();
 
@@ -195,6 +224,8 @@ router.get('/', requireAuth, async (req, res) => {
         status: 'Stagnant', recordCount: 0, indicators: [], competencyLevels: [],
         competencyStatuses: [], correspondenceCompetencies: [],
         correspondenceOverall: null, correspondenceLevel: null, correspondenceStatus: 'Stagnant',
+        functionalCompetencies: [], functionalOverall: null, functionalLevel: null, functionalStatus: 'Stagnant',
+        leadershipCompetencies: [], leadershipOverall: null, leadershipLevel: null, leadershipStatus: 'Stagnant',
       });
     }
 
@@ -345,7 +376,7 @@ router.get('/', requireAuth, async (req, res) => {
 
     console.log(`[CompetencyBreakdown] Correspondence overall: ${correspondenceOverall ?? 'N/A'}% → level ${correspondenceLevel}\n`);
 
-    // ── Functional & Leadership competency scoring (Auditmate-based, same as Core) ──
+    // ── Functional & Leadership competency scoring (AI-based, 3 sources) ──
     const officerUser = await User.findById(officerId).lean().catch(() => null);
     const officerRoleStr = officerUser?.role ?? 'CSO';
 
@@ -356,32 +387,134 @@ router.get('/', requireAuth, async (req, res) => {
         : Promise.resolve([]),
     ]);
 
-    // Use overall 30-day Auditmate average — same source as Core competencies
-    const funcScore = overallAvg !== null ? Math.round(overallAvg * 10) / 10 : null;
+    // Fetch parsed context once (all 3 sources) for AI scoring.
+    // Use no date filter so we get all available data regardless of the audit window.
+    const parsedCtx = await fetchParsedContext(officerId, '2000-01-01', new Date().toISOString().slice(0, 10))
+      .catch(() => ({ auditmateSentences: [], interactionsSentences: [], essSentences: [] }));
 
-    function scoreFuncComp(comp, compIndex) {
-      const level = scoreToLevel(funcScore);
-      const compStatus = deriveStatusFromScores(
-        recentSortedDates
-          .map(date => { const s = recentByDate[date].map(extractTotal).filter(x => x !== null); return s.length ? s.reduce((a, b) => a + b, 0) / s.length : null; })
-          .filter(v => v !== null)
-      );
-      return {
-        index:            compIndex,
-        name:             comp.name,
-        shortDescription: comp.short_description ?? '',
-        bulletPoints:     comp.bullet_points ?? [],
-        score:            funcScore,
-        level,
-        status:           compStatus,
-      };
+    console.log(`[competencyBreakdown] ParsedContext for ${officerId}: auditmate=${parsedCtx.auditmateSentences.length}, interactions=${parsedCtx.interactionsSentences.length}, ess=${parsedCtx.essSentences.length}`);
+
+    // All distinct upload dates for historical trend lookups
+    const allUploadDatesSorted = [...new Set(allRecords.map(r => r.uploadDate))].sort();
+
+    async function scoreOneComp(comp, compIndex, cacheType) {
+      const cacheKey = { officerId, uploadDate: windowEnd, competencyIndex: compIndex, type: cacheType };
+      const cached = await AiCache.findOne(cacheKey).lean().catch(() => null);
+      if (cached) return cached.content;
+
+      const { auditmateSentences, interactionsSentences, essSentences } = parsedCtx;
+      if (!auditmateSentences.length && !interactionsSentences.length && !essSentences.length) {
+        return { score: null, rationale: null };
+      }
+
+      const bulletText = (comp.bullet_points ?? []).map(b => `• ${b}`).join('\n') || '(none)';
+      const userPrompt = `Competency: ${comp.name}
+Description: ${comp.short_description ?? ''}
+Behavioural indicators:
+${bulletText}
+
+Officer performance data:
+
+Auditmate audit records (past 30 days):
+${auditmateSentences.join('\n') || '(no data)'}
+
+Member satisfaction feedback (past 30 days):
+${essSentences.join('\n') || '(no data)'}
+
+Officer interaction responses (past 30 days):
+${interactionsSentences.join('\n') || '(no data)'}
+
+Based on all three data sources, give a single overall score from 0 to 100 reflecting how well this officer demonstrates this competency. Consider all evidence holistically.
+
+Return ONLY a JSON object: { "score": number, "rationale": string }
+The rationale should be 1-2 sentences explaining the score.`;
+
+      try {
+        const raw = await callAI(AI_SCORING_SYS_PROMPT, userPrompt);
+        const json = raw.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
+        const parsed = JSON.parse(json);
+        const content = {
+          score: typeof parsed.score === 'number' ? Math.round(Math.min(100, Math.max(0, parsed.score)) * 10) / 10 : null,
+          rationale: parsed.rationale ?? null,
+        };
+        await AiCache.create({ ...cacheKey, content }).catch(() => {});
+        return content;
+      } catch (err) {
+        console.error(`[AI Score] ${comp.name}:`, err.message);
+        return { score: null, rationale: null };
+      }
     }
 
-    const functionalCompetencies  = functionalFramework.map((comp, i)  => scoreFuncComp(comp, 200 + (comp.sequence ?? i)));
-    const leadershipCompetencies  = leadershipFramework.map((comp,  i) => scoreFuncComp(comp, 300 + (comp.sequence ?? i)));
+    async function getStatusForComp(compIndex, cacheType, currentScore) {
+      const prevDates = allUploadDatesSorted.slice(-3, -1); // up to 2 dates before current
+      const prevScores = await Promise.all(
+        prevDates.map(date =>
+          AiCache.findOne({ officerId, uploadDate: date, competencyIndex: compIndex, type: cacheType })
+            .lean().catch(() => null)
+            .then(doc => doc?.content?.score ?? null)
+        )
+      );
+      const allScores = [...prevScores, currentScore].filter(s => s !== null);
+      return deriveStatusFromScores(allScores);
+    }
 
-    const funcOverall = funcScore;
-    const funcLevel   = scoreToLevel(funcOverall);
+    // Score all functional competencies in parallel
+    const functionalCompetencies = await Promise.all(
+      functionalFramework.map(async (comp, i) => {
+        const compIndex = 200 + (comp.sequence ?? i);
+        const aiResult = await scoreOneComp(comp, compIndex, 'func-score');
+        const score  = aiResult.score;
+        const level  = scoreToLevel(score);
+        const status = await getStatusForComp(compIndex, 'func-score', score);
+        return {
+          index: compIndex, name: comp.name,
+          shortDescription: comp.short_description ?? '',
+          bulletPoints: comp.bullet_points ?? [],
+          score, level, status,
+          rationale: aiResult.rationale,
+        };
+      })
+    );
+
+    // Score all leadership competencies in parallel
+    const leadershipCompetencies = await Promise.all(
+      leadershipFramework.map(async (comp, i) => {
+        const compIndex = 300 + (comp.sequence ?? i);
+        const aiResult = await scoreOneComp(comp, compIndex, 'lead-score');
+        const score  = aiResult.score;
+        const level  = scoreToLevel(score);
+        const status = await getStatusForComp(compIndex, 'lead-score', score);
+        return {
+          index: compIndex, name: comp.name,
+          shortDescription: comp.short_description ?? '',
+          bulletPoints: comp.bullet_points ?? [],
+          score, level, status,
+          rationale: aiResult.rationale,
+        };
+      })
+    );
+
+    // Overall functional summary
+    const validFuncScores = functionalCompetencies.map(c => c.score).filter(v => v !== null);
+    const funcOverall = validFuncScores.length
+      ? Math.round((validFuncScores.reduce((a, b) => a + b, 0) / validFuncScores.length) * 10) / 10
+      : null;
+    const funcLevel = scoreToLevel(funcOverall);
+    const funcStatuses = functionalCompetencies.map(c => c.status);
+    const functionalStatus = funcStatuses.filter(s => s === 'Mastery').length >= 3 ? 'Mastery'
+      : funcStatuses.filter(s => s === 'Advancing').length >= 2 ? 'Advancing' : 'Stagnant';
+
+    // Overall leadership summary
+    const validLeadScores = leadershipCompetencies.map(c => c.score).filter(v => v !== null);
+    const leadershipOverall = validLeadScores.length
+      ? Math.round((validLeadScores.reduce((a, b) => a + b, 0) / validLeadScores.length) * 10) / 10
+      : null;
+    const leadershipLevel = scoreToLevel(leadershipOverall);
+    const leadStatuses = leadershipCompetencies.map(c => c.status);
+    const leadershipStatus = leadStatuses.filter(s => s === 'Mastery').length >= 2 ? 'Mastery'
+      : leadStatuses.filter(s => s === 'Advancing').length >= 1 ? 'Advancing' : 'Stagnant';
+
+    console.log('[competencyBreakdown] Functional competencies response:', JSON.stringify(functionalCompetencies, null, 2));
 
     res.json({
       officerId,
@@ -401,7 +534,11 @@ router.get('/', requireAuth, async (req, res) => {
       functionalCompetencies,
       functionalOverall: funcOverall,
       functionalLevel:   funcLevel,
+      functionalStatus,
       leadershipCompetencies,
+      leadershipOverall,
+      leadershipLevel,
+      leadershipStatus,
     });
   } catch (err) {
     console.error('CompetencyBreakdown error:', err);
