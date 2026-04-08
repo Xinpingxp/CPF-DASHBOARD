@@ -65,7 +65,7 @@ export default function App() {
         <Routes>
           <Route
             path="/login"
-            element={user ? <Navigate to="/dashboard" replace /> : <Login />}
+            element={user ? <Navigate to={user.role === 'Admin' ? '/admin' : '/dashboard'} replace /> : <Login />}
           />
           {/* Pathless layout route — wraps all protected pages without fighting the redirect */}
           <Route
@@ -83,8 +83,8 @@ export default function App() {
             <Route path="/team-overview"        element={<TeamOverview />} />
             <Route path="/admin"                element={<AdminPanel />} />
           </Route>
-          <Route path="/" element={<Navigate to={user ? '/dashboard' : '/login'} replace />} />
-          <Route path="*" element={<Navigate to={user ? '/dashboard' : '/login'} replace />} />
+          <Route path="/" element={<Navigate to={user ? (user.role === 'Admin' ? '/admin' : '/dashboard') : '/login'} replace />} />
+          <Route path="*" element={<Navigate to={user ? (user.role === 'Admin' ? '/admin' : '/dashboard') : '/login'} replace />} />
         </Routes>
       </BrowserRouter>
     </AuthContext.Provider>

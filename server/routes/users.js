@@ -18,6 +18,7 @@ router.get('/team', requireAuth, async (req, res) => {
     if (role === 'CSO') return res.json([]);
     if (role === 'TL') filter = { role: 'CSO' };
     if (role === 'Supervisor') filter = { role: { $in: ['CSO', 'TL'] } };
+    if (role === 'Admin') filter = { role: { $ne: 'Admin' } }; // Admin doesn't see team members
 
     const users = await User.find(filter, '_id name role').lean();
     res.json(users.map(u => ({ id: String(u._id), name: u.name, role: u.role })));
