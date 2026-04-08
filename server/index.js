@@ -13,6 +13,7 @@ import radarRouter      from './routes/radarData.js';
 import flagsRouter      from './routes/flagsAlerts.js';
 import teamOverviewRouter from './routes/teamOverview.js';
 import competenciesRouter from './routes/competencies.js';
+import adminRouter from './routes/admin.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -37,6 +38,7 @@ app.use('/api/radar',                radarRouter);
 app.use('/api/flags-alerts',         flagsRouter);
 app.use('/api/team-overview',        teamOverviewRouter);
 app.use('/api/competencies',         competenciesRouter);
+app.use('/api/admin',         adminRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {

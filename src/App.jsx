@@ -9,6 +9,7 @@ import CompetencyBreakdown from './pages/CompetencyBreakdown.jsx'
 import CompetencyRadar from './pages/CompetencyRadar.jsx'
 import FlagsAlerts from './pages/FlagsAlerts.jsx'
 import TeamOverview from './pages/TeamOverview.jsx'
+import AdminPanel from './pages/AdminPanel.jsx'
 import { getUser, clearAuth, saveAuth } from './utils/auth.js'
 
 class ErrorBoundary extends Component {
@@ -64,7 +65,7 @@ export default function App() {
         <Routes>
           <Route
             path="/login"
-            element={user ? <Navigate to="/data-upload" replace /> : <Login />}
+            element={user ? <Navigate to="/dashboard" replace /> : <Login />}
           />
           {/* Pathless layout route — wraps all protected pages without fighting the redirect */}
           <Route
@@ -74,16 +75,16 @@ export default function App() {
               </PrivateRoute>
             }
           >
-            <Route path="/data-upload"          element={<DataUpload />} />
             <Route path="/dashboard"            element={<DashboardPage />} />
             <Route path="/forecast"             element={<ForecastPage />} />
             <Route path="/competency-breakdown" element={<CompetencyBreakdown />} />
             <Route path="/competency-radar"     element={<CompetencyRadar />} />
             <Route path="/flags-alerts"         element={<FlagsAlerts />} />
             <Route path="/team-overview"        element={<TeamOverview />} />
+            <Route path="/admin"                element={<AdminPanel />} />
           </Route>
-          <Route path="/" element={<Navigate to={user ? '/data-upload' : '/login'} replace />} />
-          <Route path="*" element={<Navigate to={user ? '/data-upload' : '/login'} replace />} />
+          <Route path="/" element={<Navigate to={user ? '/dashboard' : '/login'} replace />} />
+          <Route path="*" element={<Navigate to={user ? '/dashboard' : '/login'} replace />} />
         </Routes>
       </BrowserRouter>
     </AuthContext.Provider>

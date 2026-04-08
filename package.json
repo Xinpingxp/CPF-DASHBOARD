@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "seed:competencies": "node scripts/seedCompetencies.js",
     "seed:mockdata": "node scripts/seedMockData.js",
-    "seed:twoCSOs": "node scripts/seedTwoCSOs.js"
+    "seed:twoCSOs": "node scripts/seedTwoCSOs.js",
+    "seed:admin": "node scripts/seedAdmin.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

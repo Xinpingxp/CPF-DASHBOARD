@@ -33,13 +33,13 @@ const ChevronIcon = () => <SvgIcon size={13}><polyline points="6 9 12 15 18 9"/>
 
 /* nav items per role */
 const ALL_NAV = [
-  { label: 'Data Upload',          path: '/data-upload',          Icon: UploadIcon, roles: ['CSO','TL','Supervisor'] },
   { label: 'Dashboard',            path: '/dashboard',            Icon: DashIcon,   roles: ['CSO','TL','Supervisor'] },
   { label: '3-Month Forecast',     path: '/forecast',             Icon: TrendIcon,  roles: ['CSO','TL','Supervisor'] },
   { label: 'Competency Breakdown', path: '/competency-breakdown', Icon: BarIcon,    roles: ['CSO','TL','Supervisor'] },
   { label: 'Competency Radar',     path: '/competency-radar',     Icon: TargetIcon, roles: ['CSO','TL','Supervisor'] },
   { label: 'Flags & Alerts',       path: '/flags-alerts',         Icon: FlagIcon,   roles: ['CSO','TL','Supervisor'] },
   { label: 'Team Overview',        path: '/team-overview',        Icon: PeopleIcon, roles: ['TL','Supervisor'] },
+  { label: 'Admin Panel',          path: '/admin',                Icon: UploadIcon, roles: ['Admin'] },
 ]
 
 const SECTION_LABEL = {
@@ -90,10 +90,12 @@ export default function Sidebar() {
 
   const navItems = ALL_NAV.filter(item => item.roles.includes(user?.role))
 
-  /* dropdown options: own account + team */
+  /* dropdown options: own account + team + admin (only for non-admin users) */
   const viewingOptions = [
     { id: user?.id, name: user?.name, role: user?.role },
     ...teamMembers,
+    // Only add admin option if user is not already admin
+    ...(user?.role !== 'Admin' ? [{ id: 'admin', name: 'System Administrator', role: 'Admin' }] : []),
   ]
 
   const selectedViewing = viewingAs ?? { id: user?.id, name: user?.name, role: user?.role }
@@ -173,7 +175,14 @@ export default function Sidebar() {
                     return (
                       <button
                         key={opt.id}
-                        onClick={() => { setViewingAs(opt); setDropOpen(false) }}
+                        onClick={() => { 
+                          if (opt.id === 'admin') {
+                            navigate('/admin')
+                            setDropOpen(false)
+                          } else {
+                            setViewingAs(opt); setDropOpen(false)
+                          }
+                        }}
                         style={{
                           width: '100%', padding: '10px 12px', textAlign: 'left',
                           background: isSelected ? '#eef5f3' : 'transparent',
