@@ -4,6 +4,7 @@ import Login from './components/Login.jsx'
 import Layout from './components/Layout.jsx'
 import DataUpload from './pages/DataUpload.jsx'
 import DashboardPage from './pages/DashboardPage.jsx'
+import DataSummaryPage from './pages/DataSummaryPage.jsx'
 import ForecastPage from './pages/ForecastPage.jsx'
 import CompetencyBreakdown from './pages/CompetencyBreakdown.jsx'
 import CompetencyRadar from './pages/CompetencyRadar.jsx'
@@ -76,6 +77,7 @@ export default function App() {
             }
           >
             <Route path="/dashboard"            element={<DashboardPage />} />
+            <Route path="/data-summary"         element={<DataSummaryPage />} />
             <Route path="/forecast"             element={<ForecastPage />} />
             <Route path="/competency-breakdown" element={<CompetencyBreakdown />} />
             <Route path="/competency-radar"     element={<CompetencyRadar />} />

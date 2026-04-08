@@ -153,6 +153,43 @@ router.get('/uploads', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+// DELETE /api/admin/uploads?officerId=xxx&date=YYYY-MM-DD&type=interactions|auditmate|ess  (type optional, omit to delete all)
+router.delete('/uploads', requireAuth, requireAdmin, async (req, res) => {
+  const { officerId, date, type } = req.query;
+  if (!officerId || !date) return res.status(400).json({ error: 'officerId and date are required' });
+
+  try {
+    const filter = { officerId, uploadDate: date };
+    const deleted = {};
+
+    if (!type || type === 'interactions') {
+      const r = await Interaction.deleteMany(filter);
+      deleted.interactions = r.deletedCount;
+    }
+    if (!type || type === 'auditmate') {
+      const r = await AuditRecord.deleteMany(filter);
+      deleted.auditmate = r.deletedCount;
+    }
+    if (!type || type === 'ess') {
+      const r = await EssRecord.deleteMany(filter);
+      deleted.ess = r.deletedCount;
+    }
+    // Also clean up parsed uploads
+    if (type) {
+      const r = await ParsedUpload.deleteMany({ officerId, uploadDate: date, type });
+      deleted.parsed = r.deletedCount;
+    } else {
+      const r = await ParsedUpload.deleteMany({ officerId, uploadDate: date });
+      deleted.parsed = r.deletedCount;
+    }
+
+    res.json({ success: true, deleted });
+  } catch (err) {
+    console.error('Admin delete uploads error:', err);
+    res.status(500).json({ error: 'Failed to delete upload data.' });
+  }
+});
+
 // GET /api/admin/competencies
 router.get('/competencies', requireAuth, requireAdmin, async (req, res) => {
   try {

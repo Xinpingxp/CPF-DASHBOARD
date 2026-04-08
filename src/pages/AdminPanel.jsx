@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { Navigate } from 'react-router-dom'
 import Topbar from '../components/Topbar.jsx'
 import { useAuth } from '../App.jsx'
 import { getToken } from '../utils/auth.js'
@@ -543,7 +544,7 @@ function CompetencyForm({ competency, onSave, onCancel, roles }) {
 
 /* Main Admin Panel */
 export default function AdminPanel() {
-  const { user } = useAuth()
+  const { user, viewingAs } = useAuth()
   const [activeTab, setActiveTab] = useState('uploads')
   const [toast, setToast] = useState(null)
   
@@ -556,16 +557,42 @@ export default function AdminPanel() {
   const [loading, setLoading] = useState(false)
   const [uploadData, setUploadData] = useState([])
   const [uploadLoading, setUploadLoading] = useState(false)
+
+  // User selector state
+  const [usersList, setUsersList] = useState([])
+  const [selectedUser, setSelectedUser] = useState(null)
+  const [userSearch, setUserSearch] = useState('')
+  const [userDropOpen, setUserDropOpen] = useState(false)
+  const userDropRef = useRef(null)
   
   // Competency management state
   const [competencies, setCompetencies] = useState([])
   const [competencyLoading, setCompetencyLoading] = useState(false)
   const [editingCompetency, setEditingCompetency] = useState(null)
   const [showCompetencyForm, setShowCompetencyForm] = useState(false)
+  const [compRoleTab, setCompRoleTab] = useState('CSO')
+  const [compTypeOpen, setCompTypeOpen] = useState(null)
 
   const roles = ['CSO', 'TL', 'Supervisor']
   const today = new Date().toISOString().slice(0, 10)
   const hasAnyFile = !!(interactionsFile || auditmateFile || essFile)
+
+  // Fetch users list for admin upload selector
+  useEffect(() => {
+    fetch('/api/users/team', { headers: { Authorization: `Bearer ${getToken()}` } })
+      .then(r => r.json())
+      .then(list => setUsersList(Array.isArray(list) ? list : []))
+      .catch(() => {})
+  }, [])
+
+  // Close user dropdown on outside click
+  useEffect(() => {
+    function handleClick(e) {
+      if (userDropRef.current && !userDropRef.current.contains(e.target)) setUserDropOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
 
   // Fetch upload data for viewing
   useEffect(() => {
@@ -580,6 +607,29 @@ export default function AdminPanel() {
       fetchCompetencies()
     }
   }, [activeTab])
+
+  // If Admin is viewing as another user, redirect to that user's dashboard
+  const isViewingOther = user?.role === 'Admin' && viewingAs && String(viewingAs.id) !== String(user?.id)
+  if (isViewingOther) return <Navigate to="/dashboard" replace />
+
+  async function handleDeleteUpload(officerId, type) {
+    const label = type ? `${type} data` : 'all data'
+    if (!window.confirm(`Are you sure you want to delete ${label} for this user on ${date}?`)) return
+    try {
+      const params = new URLSearchParams({ officerId, date })
+      if (type) params.set('type', type)
+      const res = await fetch(`/api/admin/uploads?${params}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${getToken()}` },
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Delete failed')
+      setToast({ message: 'Data deleted successfully!', type: 'success' })
+      fetchUploadData()
+    } catch (err) {
+      setToast({ message: err.message || 'Delete failed.', type: 'error' })
+    }
+  }
 
   async function fetchUploadData() {
     setUploadLoading(true)
@@ -644,7 +694,7 @@ export default function AdminPanel() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${getToken()}`,
         },
-        body: JSON.stringify({ date, interactions, auditmate, ess }),
+        body: JSON.stringify({ date, interactions, auditmate, ess, targetUserId: selectedUser?.id }),
       })
 
       const data = await res.json()
@@ -780,6 +830,97 @@ export default function AdminPanel() {
                 />
               </div>
 
+              {/* Upload for user selector */}
+              <div style={{ marginBottom: '24px' }}>
+                <div style={{ fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Upload for</div>
+                <div ref={userDropRef} style={{ position: 'relative' }}>
+                  <div
+                    onClick={() => setUserDropOpen(o => !o)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      border: `1.5px solid ${userDropOpen ? '#1e3a35' : '#d1d5db'}`, borderRadius: '8px',
+                      padding: '9px 12px', cursor: 'pointer', background: 'white',
+                      transition: 'border-color 0.15s',
+                    }}
+                  >
+                    <span style={{ fontSize: '13px', color: selectedUser ? '#111827' : '#9ca3af' }}>
+                      {selectedUser ? `${selectedUser.name} — ${selectedUser.role}` : 'Select a user...'}
+                    </span>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2"
+                      style={{ transform: userDropOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s', flexShrink: 0 }}>
+                      <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                  </div>
+
+                  {userDropOpen && (
+                    <div style={{
+                      position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 50,
+                      background: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px',
+                      boxShadow: '0 4px 16px rgba(0,0,0,0.12)', overflow: 'hidden',
+                      maxHeight: '240px', display: 'flex', flexDirection: 'column',
+                    }}>
+                      <div style={{ padding: '8px', borderBottom: '1px solid #f3f4f6' }}>
+                        <input
+                          type="text"
+                          placeholder="Search users..."
+                          value={userSearch}
+                          onChange={e => setUserSearch(e.target.value)}
+                          onClick={e => e.stopPropagation()}
+                          style={{
+                            width: '100%', padding: '7px 10px', border: '1px solid #e5e7eb',
+                            borderRadius: '6px', fontSize: '13px', color: '#111827',
+                            outline: 'none', fontFamily: 'inherit',
+                          }}
+                          onFocus={e => e.target.style.borderColor = '#1e3a35'}
+                          onBlur={e => e.target.style.borderColor = '#e5e7eb'}
+                          autoFocus
+                        />
+                      </div>
+                      <div style={{ overflowY: 'auto', maxHeight: '180px' }}>
+                        {usersList
+                          .filter(u => {
+                            if (!userSearch.trim()) return true
+                            const q = userSearch.toLowerCase()
+                            return u.name.toLowerCase().includes(q) || u.role.toLowerCase().includes(q)
+                          })
+                          .map(u => (
+                            <button
+                              key={u.id}
+                              onClick={() => { setSelectedUser(u); setUserDropOpen(false); setUserSearch('') }}
+                              style={{
+                                width: '100%', padding: '10px 12px', textAlign: 'left',
+                                background: selectedUser?.id === u.id ? '#f0f7f5' : 'transparent',
+                                border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                                borderBottom: '1px solid #f3f4f6',
+                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                              }}
+                              onMouseEnter={e => { if (selectedUser?.id !== u.id) e.currentTarget.style.background = '#f9fafb' }}
+                              onMouseLeave={e => { if (selectedUser?.id !== u.id) e.currentTarget.style.background = 'transparent' }}
+                            >
+                              <span style={{ fontSize: '13px', fontWeight: selectedUser?.id === u.id ? '600' : '400', color: '#111827' }}>
+                                {u.name}
+                              </span>
+                              <span style={{ fontSize: '11px', color: '#6b7280', background: '#f3f4f6', padding: '2px 8px', borderRadius: '4px' }}>
+                                {u.role}
+                              </span>
+                            </button>
+                          ))
+                        }
+                        {usersList.filter(u => {
+                          if (!userSearch.trim()) return true
+                          const q = userSearch.toLowerCase()
+                          return u.name.toLowerCase().includes(q) || u.role.toLowerCase().includes(q)
+                        }).length === 0 && (
+                          <div style={{ padding: '16px', textAlign: 'center', fontSize: '13px', color: '#9ca3af' }}>
+                            No users found
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Upload cards */}
               <div style={{ display: 'flex', gap: '16px', marginBottom: '28px' }}>
                 <UploadCard
@@ -821,18 +962,18 @@ export default function AdminPanel() {
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
                 <button
                   onClick={handleUpload}
-                  disabled={!hasAnyFile || loading}
+                  disabled={!hasAnyFile || !selectedUser || loading}
                   style={{
-                    background: hasAnyFile && !loading ? '#1e3a35' : '#e5e7eb',
-                    color: hasAnyFile && !loading ? 'white' : '#9ca3af',
+                    background: hasAnyFile && selectedUser && !loading ? '#1e3a35' : '#e5e7eb',
+                    color: hasAnyFile && selectedUser && !loading ? 'white' : '#9ca3af',
                     border: 'none', borderRadius: '9px',
                     padding: '11px 40px', fontSize: '14px', fontWeight: '600',
-                    cursor: hasAnyFile && !loading ? 'pointer' : 'not-allowed',
+                    cursor: hasAnyFile && selectedUser && !loading ? 'pointer' : 'not-allowed',
                     transition: 'all 0.15s', fontFamily: 'inherit',
                     minWidth: '160px',
                   }}
-                  onMouseEnter={e => { if (hasAnyFile && !loading) e.currentTarget.style.background = '#2d6a4f' }}
-                  onMouseLeave={e => { if (hasAnyFile && !loading) e.currentTarget.style.background = '#1e3a35' }}
+                  onMouseEnter={e => { if (hasAnyFile && selectedUser && !loading) e.currentTarget.style.background = '#2d6a4f' }}
+                  onMouseLeave={e => { if (hasAnyFile && selectedUser && !loading) e.currentTarget.style.background = '#1e3a35' }}
                 >
                   {loading ? 'Uploading...' : 'Submit Data'}
                 </button>
@@ -869,22 +1010,66 @@ export default function AdminPanel() {
                 }}>
                   Loading upload data...
                 </div>
-              ) : uploadData.length > 0 ? (
-                <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-                  {uploadData.map((item, index) => (
-                    <DataSummaryCard
-                      key={index}
-                      title={`${item.officerName} - ${item.type}`}
-                      data={item}
-                      icon={item.type === 'interactions' ? <PersonIcon /> :
-                            item.type === 'auditmate' ? <ClipboardIcon /> : <ChatIcon />}
-                      color={item.type === 'interactions' ? { bg: '#e8f5f0', text: '#1e3a35' } :
-                             item.type === 'auditmate' ? { bg: '#eff6ff', text: '#3b82f6' } :
-                             { bg: '#f5f3ff', text: '#7c3aed' }}
-                    />
-                  ))}
-                </div>
-              ) : (
+              ) : uploadData.length > 0 ? (() => {
+                const byOfficer = {}
+                uploadData.forEach(item => {
+                  if (!byOfficer[item.officerId]) byOfficer[item.officerId] = { name: item.officerName, items: [] }
+                  byOfficer[item.officerId].items.push(item)
+                })
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    {Object.entries(byOfficer).map(([oid, group]) => (
+                      <div key={oid}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                          <span style={{ fontSize: '14px', fontWeight: '700', color: '#1e3a35' }}>{group.name}</span>
+                          <button
+                            onClick={() => handleDeleteUpload(oid)}
+                            style={{
+                              background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca',
+                              borderRadius: '6px', padding: '5px 14px', fontSize: '12px', fontWeight: '600',
+                              cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.background = '#fee2e2' }}
+                            onMouseLeave={e => { e.currentTarget.style.background = '#fef2f2' }}
+                          >
+                            Delete All
+                          </button>
+                        </div>
+                        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                          {group.items.map((item, idx) => (
+                            <div key={idx} style={{ flex: 1, minWidth: '200px', position: 'relative' }}>
+                              <DataSummaryCard
+                                title={item.type.charAt(0).toUpperCase() + item.type.slice(1)}
+                                data={item}
+                                icon={item.type === 'interactions' ? <PersonIcon /> :
+                                      item.type === 'auditmate' ? <ClipboardIcon /> : <ChatIcon />}
+                                color={item.type === 'interactions' ? { bg: '#e8f5f0', text: '#1e3a35' } :
+                                       item.type === 'auditmate' ? { bg: '#eff6ff', text: '#3b82f6' } :
+                                       { bg: '#f5f3ff', text: '#7c3aed' }}
+                              />
+                              <button
+                                onClick={() => handleDeleteUpload(oid, item.type)}
+                                title={`Delete ${item.type}`}
+                                style={{
+                                  position: 'absolute', top: '10px', right: '10px',
+                                  background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca',
+                                  borderRadius: '6px', padding: '4px 8px', fontSize: '11px', fontWeight: '600',
+                                  cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
+                                  lineHeight: '1',
+                                }}
+                                onMouseEnter={e => { e.currentTarget.style.background = '#fee2e2' }}
+                                onMouseLeave={e => { e.currentTarget.style.background = '#fef2f2' }}
+                              >
+                                <DeleteIcon />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })() : (
                 <div style={{
                   padding: '40px', textAlign: 'center', fontSize: '13px', color: '#9ca3af',
                 }}>
@@ -926,6 +1111,28 @@ export default function AdminPanel() {
                   </button>
                 </div>
 
+                {/* Role tabs */}
+                <div style={{ display: 'flex', gap: '0', borderBottom: '2px solid #e5e7eb', marginBottom: '20px' }}>
+                  {roles.map(role => (
+                    <button
+                      key={role}
+                      onClick={() => { setCompRoleTab(role); setCompTypeOpen(null) }}
+                      style={{
+                        padding: '10px 28px', fontSize: '13px', fontWeight: '600',
+                        cursor: 'pointer', fontFamily: 'inherit',
+                        background: compRoleTab === role ? '#ffffff' : 'transparent',
+                        color: compRoleTab === role ? '#1e3a35' : '#6b8c7d',
+                        border: 'none',
+                        borderBottom: compRoleTab === role ? '2px solid #1e3a35' : '2px solid transparent',
+                        marginBottom: '-2px',
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      {role}
+                    </button>
+                  ))}
+                </div>
+
                 {competencyLoading ? (
                   <div style={{
                     background: 'white', border: '1px solid #e5e7eb', borderRadius: '12px',
@@ -933,68 +1140,93 @@ export default function AdminPanel() {
                   }}>
                     Loading competencies...
                   </div>
-                ) : competencies.length > 0 ? (
-                  <div style={{
-                    background: 'white', border: '1px solid #e5e7eb', borderRadius: '12px',
-                    overflow: 'hidden',
-                  }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                      <thead>
-                        <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
-                          <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#374151' }}>Role</th>
-                          <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#374151' }}>Type</th>
-                          <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#374151' }}>Sequence</th>
-                          <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#374151' }}>Name</th>
-                          <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#374151' }}>Target Level</th>
-                          <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#374151' }}>Assessment</th>
-                          <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#374151' }}>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {competencies.map((comp) => (
-                          <tr key={comp._id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                            <td style={{ padding: '12px 16px', fontSize: '13px', color: '#111827' }}>{comp.role}</td>
-                            <td style={{ padding: '12px 16px', fontSize: '13px', color: '#111827' }}>{comp.competency_type}</td>
-                            <td style={{ padding: '12px 16px', fontSize: '13px', color: '#111827' }}>{comp.sequence}</td>
-                            <td style={{ padding: '12px 16px', fontSize: '13px', color: '#111827' }}>{comp.name}</td>
-                            <td style={{ padding: '12px 16px', fontSize: '13px', color: '#111827' }}>{comp.target_level}</td>
-                            <td style={{ padding: '12px 16px', fontSize: '13px', color: '#111827' }}>{comp.assessment_method}</td>
-                            <td style={{ padding: '12px 16px', fontSize: '13px', textAlign: 'center' }}>
-                              <button
-                                onClick={() => editCompetency(comp)}
-                                style={{
-                                  background: 'none', border: 'none', cursor: 'pointer',
-                                  color: '#1e3a35', padding: '4px', marginRight: '8px',
-                                  borderRadius: '4px',
-                                }}
-                                title="Edit"
-                              >
-                                <EditIcon />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteCompetency(comp._id)}
-                                style={{
-                                  background: 'none', border: 'none', cursor: 'pointer',
-                                  color: '#dc2626', padding: '4px', borderRadius: '4px',
-                                }}
-                                title="Delete"
-                              >
-                                <DeleteIcon />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div style={{
-                    background: 'white', border: '1px solid #e5e7eb', borderRadius: '12px',
-                    padding: '40px', textAlign: 'center', fontSize: '13px', color: '#9ca3af',
-                  }}>
-                    No competencies found. Click "Add Competency" to create one.
-                  </div>
-                )}
+                ) : (() => {
+                  const roleComps = competencies.filter(c => c.role === compRoleTab)
+                  const types = [...new Set(roleComps.map(c => c.competency_type))].sort()
+                  if (!roleComps.length) return (
+                    <div style={{
+                      background: 'white', border: '1px solid #e5e7eb', borderRadius: '12px',
+                      padding: '40px', textAlign: 'center', fontSize: '13px', color: '#9ca3af',
+                    }}>
+                      No competencies found for {compRoleTab}. Click "Add Competency" to create one.
+                    </div>
+                  )
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                      {types.map(type => {
+                        const isOpen = compTypeOpen === null || compTypeOpen === type
+                        const items = roleComps.filter(c => c.competency_type === type).sort((a, b) => a.sequence - b.sequence)
+                        return (
+                          <div key={type} style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', overflow: 'hidden' }}>
+                            <button
+                              onClick={() => setCompTypeOpen(compTypeOpen === type ? null : type)}
+                              style={{
+                                width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                padding: '14px 20px', background: '#f9fafb', border: 'none',
+                                cursor: 'pointer', fontFamily: 'inherit',
+                              }}
+                            >
+                              <span style={{ fontSize: '14px', fontWeight: '700', color: '#1e3a35' }}>
+                                {type} Competencies
+                                <span style={{ marginLeft: '10px', fontSize: '12px', fontWeight: '500', color: '#6b7280' }}>({items.length})</span>
+                              </span>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2"
+                                style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
+                                <polyline points="6 9 12 15 18 9"/>
+                              </svg>
+                            </button>
+                            {isOpen && (
+                              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <thead>
+                                  <tr style={{ background: '#f9fafb', borderTop: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb' }}>
+                                    <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#374151', width: '60px' }}>Seq</th>
+                                    <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#374151' }}>Name</th>
+                                    <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#374151', width: '120px' }}>Target Level</th>
+                                    <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#374151', width: '160px' }}>Assessment</th>
+                                    <th style={{ padding: '10px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#374151', width: '90px' }}>Actions</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {items.map(comp => (
+                                    <tr key={comp._id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                                      <td style={{ padding: '12px 16px', fontSize: '13px', color: '#111827' }}>{comp.sequence}</td>
+                                      <td style={{ padding: '12px 16px', fontSize: '13px', color: '#111827' }}>{comp.name}</td>
+                                      <td style={{ padding: '12px 16px', fontSize: '13px', color: '#111827' }}>{comp.target_level}</td>
+                                      <td style={{ padding: '12px 16px', fontSize: '13px', color: '#111827' }}>{comp.assessment_method}</td>
+                                      <td style={{ padding: '12px 16px', fontSize: '13px', textAlign: 'center' }}>
+                                        <button
+                                          onClick={() => editCompetency(comp)}
+                                          style={{
+                                            background: 'none', border: 'none', cursor: 'pointer',
+                                            color: '#1e3a35', padding: '4px', marginRight: '8px',
+                                            borderRadius: '4px',
+                                          }}
+                                          title="Edit"
+                                        >
+                                          <EditIcon />
+                                        </button>
+                                        <button
+                                          onClick={() => handleDeleteCompetency(comp._id)}
+                                          style={{
+                                            background: 'none', border: 'none', cursor: 'pointer',
+                                            color: '#dc2626', padding: '4px', borderRadius: '4px',
+                                          }}
+                                          title="Delete"
+                                        >
+                                          <DeleteIcon />
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })()}
               </div>
             )}
           </div>

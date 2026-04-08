@@ -154,6 +154,7 @@ function computeLevelDistribution(indicatorResults, records) {
 
 /* ── permission check: can requester view this officer? ──────── */
 function canView(requester, targetId) {
+  if (requester.role === 'Admin') return true;
   if (requester.role === 'Supervisor') return true;
   if (String(requester.id) === String(targetId)) return true;
   // TL can view any officer (CSO) — we verify role server-side via User lookup
