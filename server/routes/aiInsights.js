@@ -98,6 +98,7 @@ const COMPETENCIES = [
 async function resolveOfficerId(req) {
   const requestedId = req.body.officerId;
   if (!requestedId || requestedId === String(req.user.id)) return String(req.user.id);
+  if (req.user.role === 'Admin') return requestedId;
   if (req.user.role === 'CSO') return null;
   if (req.user.role === 'TL') {
     const target = await User.findById(requestedId).lean();

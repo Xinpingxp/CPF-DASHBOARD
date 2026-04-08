@@ -110,10 +110,65 @@ router.get('/summary', requireAuth, async (req, res) => {
   }
 });
 
+// GET /api/upload/user-summary?date=YYYY-MM-DD&officerId=xxx
+router.get('/user-summary', requireAuth, async (req, res) => {
+  const { date } = req.query;
+  if (!date) return res.status(400).json({ error: 'date is required' });
+
+  let officerId = req.user.id;
+  const requestedId = req.query.officerId;
+  if (requestedId && String(requestedId) !== String(req.user.id)) {
+    if (req.user.role === 'Admin') { officerId = requestedId; }
+    else if (req.user.role === 'TL' || req.user.role === 'Supervisor') { officerId = requestedId; }
+    else { return res.status(403).json({ error: 'Access denied.' }); }
+  }
+
+  try {
+    const [interactions, auditRecords, essRecords] = await Promise.all([
+      Interaction.find({ officerId, uploadDate: date }).lean(),
+      AuditRecord.find({ officerId, uploadDate: date }).lean(),
+      EssRecord.find({ officerId, uploadDate: date }).lean(),
+    ]);
+
+    const cards = [];
+
+    if (interactions.length) {
+      cards.push({ type: 'interactions', count: interactions.length, uploadDate: date });
+    }
+
+    if (auditRecords.length) {
+      const scores = auditRecords.map(extractAuditScore).filter(s => s !== null);
+      const avgScore = scores.length ? +(scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : null;
+      const majorIssues = auditRecords.filter(r => {
+        const c = extractClassification(r);
+        return c && c.includes('major');
+      }).length;
+      cards.push({ type: 'auditmate', count: auditRecords.length, avgScore, majorIssues, uploadDate: date });
+    }
+
+    if (essRecords.length) {
+      const ratings = essRecords.map(extractRating).filter(r => r !== null);
+      const avgRating = ratings.length ? +(ratings.reduce((a, b) => a + b, 0) / ratings.length).toFixed(1) : null;
+      cards.push({
+        type: 'ess', count: essRecords.length, avgRating,
+        positive: ratings.filter(r => r >= 4).length,
+        negative: ratings.filter(r => r <= 2).length,
+        uploadDate: date,
+      });
+    }
+
+    res.json(cards);
+  } catch (err) {
+    console.error('User summary error:', err);
+    res.status(500).json({ error: 'Failed to load summary.' });
+  }
+});
+
 // POST /api/upload
 router.post('/', requireAuth, async (req, res) => {
-  const { date, interactions, auditmate, ess } = req.body;
-  const officerId  = req.user.id;
+  const { date, interactions, auditmate, ess, targetUserId } = req.body;
+  // Admin can upload on behalf of another user
+  const officerId  = (req.user.role === 'Admin' && targetUserId) ? targetUserId : req.user.id;
   const uploadDate = date || new Date().toISOString().slice(0, 10);
 
   if (!interactions?.length && !auditmate?.length && !ess?.length) {

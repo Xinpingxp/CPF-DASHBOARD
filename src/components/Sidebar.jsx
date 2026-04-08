@@ -34,6 +34,7 @@ const ChevronIcon = () => <SvgIcon size={13}><polyline points="6 9 12 15 18 9"/>
 /* nav items per role */
 const ALL_NAV = [
   { label: 'Dashboard',            path: '/dashboard',            Icon: DashIcon,   roles: ['CSO','TL','Supervisor'] },
+  { label: 'Data Summary',         path: '/data-summary',         Icon: UploadIcon, roles: ['CSO','TL','Supervisor'] },
   { label: '3-Month Forecast',     path: '/forecast',             Icon: TrendIcon,  roles: ['CSO','TL','Supervisor'] },
   { label: 'Competency Breakdown', path: '/competency-breakdown', Icon: BarIcon,    roles: ['CSO','TL','Supervisor'] },
   { label: 'Competency Radar',     path: '/competency-radar',     Icon: TargetIcon, roles: ['CSO','TL','Supervisor'] },
@@ -88,8 +89,6 @@ export default function Sidebar() {
     navigate('/login')
   }
 
-  const navItems = ALL_NAV.filter(item => item.roles.includes(user?.role))
-
   /* dropdown options: own account + team only */
   const viewingOptions = [
     { id: user?.id, name: user?.name, role: user?.role },
@@ -98,6 +97,12 @@ export default function Sidebar() {
 
   const selectedViewing = viewingAs ?? { id: user?.id, name: user?.name, role: user?.role }
   const canSwitch = user?.role !== 'CSO' && teamMembers.length > 0
+
+  // When Admin is viewing another user, show that user's nav; otherwise show own role's nav
+  const isAdminViewingOther = user?.role === 'Admin' && selectedViewing.role !== 'Admin'
+  const navItems = isAdminViewingOther
+    ? ALL_NAV.filter(item => item.roles.includes(selectedViewing.role))
+    : ALL_NAV.filter(item => item.roles.includes(user?.role))
 
   return (
     <aside style={{
@@ -134,91 +139,78 @@ export default function Sidebar() {
         display: 'flex', flexDirection: 'column',
       }}>
 
-        {/* Viewing As */}
+        {/* Viewing As — only shown for roles that can switch */}
+        {canSwitch && (
         <div style={{ padding: '14px 14px 10px' }}>
           <div style={{ ...SECTION_LABEL }}>Viewing As</div>
 
-          {canSwitch ? (
-            /* Dropdown for TL / Supervisor */
-            <div ref={dropRef} style={{ position: 'relative' }}>
-              <button
-                onClick={() => setDropOpen(o => !o)}
-                style={{
-                  width: '100%', display: 'flex', alignItems: 'center',
-                  justifyContent: 'space-between',
-                  background: 'rgba(255,255,255,0.45)', border: `1px solid ${PANEL_BORDER}`,
-                  borderRadius: '8px', padding: '9px 12px', cursor: 'pointer',
-                  fontFamily: 'inherit',
-                }}
-              >
-                <div style={{ textAlign: 'left' }}>
-                  <div style={{ fontSize: '13px', fontWeight: '600', color: TEXT }}>
-                    {selectedViewing.name || '—'}
-                  </div>
-                  <div style={{ fontSize: '11px', color: TEXT_DIM, marginTop: '1px' }}>
-                    {selectedViewing.role || '—'}
-                  </div>
-                </div>
-                <span style={{ color: TEXT_DIM, flexShrink: 0 }}><ChevronIcon /></span>
-              </button>
-
-              {dropOpen && (
-                <div style={{
-                  position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 50,
-                  background: '#fff', border: `1px solid ${PANEL_BORDER}`, borderRadius: '8px',
-                  boxShadow: '0 4px 16px rgba(0,0,0,0.12)', overflow: 'hidden',
-                }}>
-                  {viewingOptions.map(opt => {
-                    const isSelected = String(opt.id) === String(selectedViewing.id)
-                    return (
-                      <button
-                        key={opt.id}
-                        onClick={() => { 
-                          if (opt.id === 'admin') {
-                            navigate('/admin')
-                            setDropOpen(false)
-                          } else {
-                            setViewingAs(opt); setDropOpen(false)
-                          }
-                        }}
-                        style={{
-                          width: '100%', padding: '10px 12px', textAlign: 'left',
-                          background: isSelected ? '#eef5f3' : 'transparent',
-                          border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                          borderBottom: `1px solid ${PANEL_BORDER}`,
-                        }}
-                      >
-                        <div style={{ fontSize: '13px', fontWeight: isSelected ? '600' : '400', color: TEXT }}>
-                          {opt.name}
-                          {String(opt.id) === String(user?.id) && (
-                            <span style={{ marginLeft: '6px', fontSize: '10px', color: TEXT_DIM }}>(you)</span>
-                          )}
-                        </div>
-                        <div style={{ fontSize: '11px', color: TEXT_DIM }}>{opt.role}</div>
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          ) : (
-            /* Static display for CSO */
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              background: 'rgba(255,255,255,0.45)', border: `1px solid ${PANEL_BORDER}`,
-              borderRadius: '8px', padding: '9px 12px',
-            }}>
-              <div>
+          <div ref={dropRef} style={{ position: 'relative' }}>
+            <button
+              onClick={() => setDropOpen(o => !o)}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center',
+                justifyContent: 'space-between',
+                background: 'rgba(255,255,255,0.45)', border: `1px solid ${PANEL_BORDER}`,
+                borderRadius: '8px', padding: '9px 12px', cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              <div style={{ textAlign: 'left' }}>
                 <div style={{ fontSize: '13px', fontWeight: '600', color: TEXT }}>
-                  {user?.name || '—'}
+                  {selectedViewing.name || '—'}
                 </div>
                 <div style={{ fontSize: '11px', color: TEXT_DIM, marginTop: '1px' }}>
-                  {user?.role || '—'}
+                  {selectedViewing.role || '—'}
                 </div>
               </div>
-            </div>
-          )}
+              <span style={{ color: TEXT_DIM, flexShrink: 0 }}><ChevronIcon /></span>
+            </button>
+
+            {dropOpen && (
+              <div style={{
+                position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 50,
+                background: '#fff', border: `1px solid ${PANEL_BORDER}`, borderRadius: '8px',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.12)', overflow: 'hidden',
+              }}>
+                {viewingOptions.map(opt => {
+                  const isSelected = String(opt.id) === String(selectedViewing.id)
+                  return (
+                    <button
+                      key={opt.id}
+                      onClick={() => { 
+                        setViewingAs(opt)
+                        setDropOpen(false)
+                        // Admin selecting self → go to admin panel; selecting other → go to their dashboard
+                        if (user?.role === 'Admin') {
+                          if (String(opt.id) === String(user?.id)) {
+                            navigate('/admin')
+                          } else {
+                            navigate('/dashboard')
+                          }
+                        }
+                      }}
+                      style={{
+                        width: '100%', padding: '10px 12px', textAlign: 'left',
+                        background: isSelected ? '#eef5f3' : 'transparent',
+                        border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                        borderBottom: `1px solid ${PANEL_BORDER}`,
+                      }}
+                    >
+                      <div style={{ fontSize: '13px', fontWeight: isSelected ? '600' : '400', color: TEXT }}>
+                        {opt.name}
+                        {String(opt.id) === String(user?.id) && (
+                          <span style={{ marginLeft: '6px', fontSize: '10px', color: TEXT_DIM }}>(you)</span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '11px', color: TEXT_DIM }}>{opt.role}</div>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
         </div>
+        )}
 
         {/* Nav */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '4px 14px 14px' }}>
