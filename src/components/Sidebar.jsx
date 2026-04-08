@@ -90,12 +90,10 @@ export default function Sidebar() {
 
   const navItems = ALL_NAV.filter(item => item.roles.includes(user?.role))
 
-  /* dropdown options: own account + team + admin (only for non-admin users) */
+  /* dropdown options: own account + team only */
   const viewingOptions = [
     { id: user?.id, name: user?.name, role: user?.role },
     ...teamMembers,
-    // Only add admin option if user is not already admin
-    ...(user?.role !== 'Admin' ? [{ id: 'admin', name: 'System Administrator', role: 'Admin' }] : []),
   ]
 
   const selectedViewing = viewingAs ?? { id: user?.id, name: user?.name, role: user?.role }
