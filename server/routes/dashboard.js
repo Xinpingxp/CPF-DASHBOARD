@@ -111,10 +111,10 @@ function computeIndicators(records) {
       ? values.reduce((a, b) => a + b, 0) / values.length
       : null;
 
-    // level: ≥90% → Advanced, 70–89% → Intermediate, <70% → Basic
+    // level: ≥80% → Advanced, 60–79% → Intermediate, <60% → Basic
     let level = null;
     if (passRate !== null) {
-      level = passRate >= 0.9 ? 'Advanced' : passRate >= 0.7 ? 'Intermediate' : 'Basic';
+      level = passRate >= 0.8 ? 'Advanced' : passRate >= 0.6 ? 'Intermediate' : 'Basic';
     }
 
     return { name, passRate, level, sampleSize: values.length };
@@ -221,7 +221,7 @@ router.get('/', requireAuth, async (req, res) => {
     const prevAvg     = prevScores.length ? prevScores.reduce((a, b) => a + b, 0) / prevScores.length : null;
     const delta       = monthAvg !== null && prevAvg !== null ? monthAvg - prevAvg : null;
     const targetStatus = monthAvg !== null
-      ? (monthAvg < 75 ? 'Needs to Develop' : monthAvg < 90 ? 'On Track' : 'Exceeds')
+      ? (monthAvg < 60 ? 'Needs to Develop' : monthAvg < 80 ? 'On Track' : 'Exceeds')
       : null;
 
     // Cards data
