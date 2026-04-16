@@ -2,6 +2,11 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import authRouter from './routes/auth.js';
 import uploadRouter    from './routes/upload.js';
 import dashboardRouter from './routes/dashboard.js';
@@ -41,9 +46,16 @@ app.use('/api/competencies',         competenciesRouter);
 app.use('/api/admin',         adminRouter);
 
 // Health check
-app.get('/api/health', (req, res) => {
+app.get('/api/health', (_req, res) => {
   const status = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
   res.json({ status, db: status });
+});
+
+// Serve built React frontend in production
+const distPath = path.join(__dirname, '..', 'dist');
+app.use(express.static(distPath));
+app.get('*', (_req, res) => {
+  res.sendFile(path.join(distPath, 'index.html'));
 });
 
 app.listen(PORT, () => {
