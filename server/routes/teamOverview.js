@@ -182,9 +182,7 @@ async function computeOfficerDetail(officerId, officerName, officerRole) {
   const essAvg = essRatings.length ? +(avg(essRatings).toFixed(1)) : null;
 
   // Competency levels (with overrides)
-  const overrideLevels = overrideDoc?.levels
-    ? Object.fromEntries(overrideDoc.levels)
-    : {};
+  const overrideLevels = overrideDoc?.levels ?? {};
   const competencies = COMPETENCY_NAMES.map((name, i) => {
     const overridden = overrideLevels[String(i)] != null;
     const lvl = overridden ? Number(overrideLevels[String(i)]) : (level ?? null);
